@@ -43,7 +43,7 @@ try:
     from shlex import quote
 except ImportError:
     from pipes import quote
-
+    
 try:
     from Pilot.pilotTools import (
         CommandBase,
@@ -60,6 +60,13 @@ except ImportError:
         safe_listdir,
         sendMessage,
     )
+    
+try:
+    from Pilot.proxyTools import BaseRequest
+except ImportError:
+    from proxyTools import BaseRequest
+    
+from urllib.error import HTTPError
 ############################
 
 
@@ -584,7 +591,7 @@ class PilotLogin(CommandBase):
 
     @logFinalizer
     def execute(self):
-        """Calls dirac pilot-login"""
+        """Calls diracX api"""
 
         if not self.pp.pilotReference:
             self.log.warn("Skipping module, no pilot reference found")
@@ -594,14 +601,20 @@ class PilotLogin(CommandBase):
             self.log.warn("Skipping module, no pilot secret found")
             return
 
-        checkCmd = "dirac pilot-login %s %s" % (
-            self.pp.pilotReference,
-            self.pp.pilotSecret
+        config = BaseRequest(
+            "%s/api/auth/pilot-login" % (
+                self.pp.diracXServer
+            ),
+            os.getenv("X509_CERT_DIR")
         )
-        retCode, _ = self.executeAndGetOutput(checkCmd, self.pp.installEnv)
-        if retCode:
-            self.log.error("Could not get execute dirac pilot-login [ERROR %d]" % retCode)
-
+        
+        config.generateUserAgent(self.pp.pilotUUID)
+        
+        self.pp.jwt = config.executeRequest({
+            "pilot_stamp": self.pp.pilotStamp,
+            "pilot_secret": self.pp.pilotSecret
+        }, insecure=True)
+        
 class CheckCECapabilities(CommandBase):
     """Used to get CE tags and other relevant parameters."""
 
@@ -1205,3 +1218,5 @@ class NagiosProbes(CommandBase):
         """Standard entry point to a pilot command"""
         self._setNagiosOptions()
         self._runNagiosProbes()
+
+
