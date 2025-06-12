@@ -66,9 +66,9 @@ except NameError:
     basestring = str
 
 try:
-    from Pilot.proxyTools import X509BasedRequest, getVO, TokenBasedRequest, BaseRequest, refreshTokenLoop
+    from Pilot.proxyTools import X509BasedRequest, getVO, TokenBasedRequest, BaseRequest
 except ImportError:
-    from proxyTools import X509BasedRequest, getVO, TokenBasedRequest, BaseRequest, refreshTokenLoop
+    from proxyTools import X509BasedRequest, getVO, TokenBasedRequest, BaseRequest
 
 try:
     FileNotFoundError  # pylint: disable=used-before-assignment
@@ -684,7 +684,7 @@ class FixedSizeBuffer(object):
             self._timer.cancel()
 
 
-def sendMessage(url, pilotUUID, wnVO, method, rawMessage, jwt={}):
+def sendMessage(diracx_URL, pilotUUID, wnVO, method, rawMessage, jwt={}):
     """
     Invoke a remote method on a Tornado server and pass a JSON message to it.
 
@@ -702,26 +702,13 @@ def sendMessage(url, pilotUUID, wnVO, method, rawMessage, jwt={}):
     message = json.dumps((json.dumps(rawMessage), pilotUUID, wnVO))    
     raw_data = {"method": method, "args": message}
 
-    config = None
-    
-    if jwt:
-        
-        config = TokenBasedRequest(
-            url=url,
-            caPath=caPath,
-            jwtData=jwt,
-            pilotUUID=pilotUUID
-        )
-
-    else:
-        cert = os.getenv("X509_USER_PROXY")
-
-        config = X509BasedRequest(
-            url=url,
-            caPath=caPath,
-            certEnv=cert,
-            pilotUUID=pilotUUID
-        )
+    config = TokenBasedRequest(
+        diracx_URL=diracx_URL,
+        endpoint_path="/api/pilots/message",
+        caPath=caPath,
+        jwtData=jwt,
+        pilotUUID=pilotUUID
+    )
     
     # Do the request
     _res = config.executeRequest(
@@ -922,7 +909,6 @@ class PilotParams(object):
         self.gridCEType = ""
         self.pilotSecret = ""
         self.clientID = ""
-        self.refreshTokenEvery = 300
         self.jwt = {
             "access_token": "",
             "refresh_token": ""
@@ -1040,7 +1026,6 @@ class PilotParams(object):
             ("", "CVMFS_locations=", "comma-separated list of CVMS locations"),
             ("", "pilotSecret=", "secret that the pilot uses with DiracX"),
             ("", "clientID=", "client id used by DiracX to revoke a token"),
-            ("", "refreshTokenEvery=", "how often we have to refresh a token (in seconds)")
         )
 
         # Possibly get Setup and JSON URL/filename from command line
@@ -1069,7 +1054,7 @@ class PilotParams(object):
 
 
 
-        if self.pilotUUID or not self.pilotSecret or not self.diracXServer:
+        if self.pilotUUID and self.pilotSecret and self.diracXServer:
             self.log.info("Fetching JWT in DiracX (URL: %s)" % self.diracXServer)
 
             config = BaseRequest(
@@ -1091,23 +1076,6 @@ class PilotParams(object):
                 sys.exit(1)
 
             self.log.info("Fetched the pilot token with the pilot secret.")
-
-            self.log.info("Starting the refresh thread.")
-            self.log.info("Refreshing the token every %d seconds." % self.refreshTokenEvery)
-            # Start background refresh thread
-            t = threading.Thread(
-                target=refreshTokenLoop,
-                args=(
-                    self.diracXServer,
-                    self.pilotUUID,
-                    self.jwt,
-                    self.jwt_lock,
-                    self.log,
-                    self.refreshTokenEvery
-                )
-            )
-            t.daemon = True
-            t.start()
         else:
             self.log.info("PilotUUID, pilotSecret, and diracXServer are needed to support DiracX.")
 
@@ -1296,8 +1264,6 @@ class PilotParams(object):
                 self.pilotSecret = v
             elif o == "--clientID":
                 self.clientID = v
-            elif o == "--refreshTokenEvery":
-                self.refreshTokenEvery = int(v)
 
     def __loadJSON(self):
         """

@@ -60,16 +60,6 @@ except ImportError:
         safe_listdir,
         sendMessage,
     )
-    
-try:
-    from Pilot.proxyTools import BaseRequest, refreshTokenLoop
-except ImportError:
-    from proxyTools import BaseRequest, refreshTokenLoop
-   
-try:
-    from urllib.error import HTTPError, URLError
-except ImportError:
-    from urllib2 import HTTPError, URLError
 ############################
 
 

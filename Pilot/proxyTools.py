@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+from curses import raw
 import json
 import os
 import time
@@ -181,22 +182,46 @@ class BaseRequest(object):
 class TokenBasedRequest(BaseRequest):
     """Connected Request with JWT support"""
 
-    def __init__(self, url, caPath, jwtData, pilotUUID):
+    def __init__(self, diracx_URL, endpoint_path, caPath, jwtData, pilotUUID):
+
+        url = diracx_URL + endpoint_path
+
         super(TokenBasedRequest, self).__init__(url, caPath, pilotUUID, "TokenBasedConnection")
         self.jwtData = jwtData
+        self.diracx_URL = diracx_URL
+        self.endpoint_path = endpoint_path
         self.addJwtToHeader()
     
     def addJwtToHeader(self):
         # Adds the JWT in the HTTP request (in the Bearer field)
         self.headers["Authorization"] = "Bearer %s" % self.jwtData["access_token"]
 
-    def executeRequest(self, raw_data, insecure=False, content_type="json"):
-    
-        return super(TokenBasedRequest, self).executeRequest(
-            raw_data,
-            insecure=insecure,
-            content_type=content_type
-        )
+    def executeRequest(self, raw_data, insecure=False, content_type="json", tries_left=1):
+        
+        try:
+            return super(TokenBasedRequest, self).executeRequest(
+                raw_data,
+                insecure=insecure,
+                content_type=content_type
+            )
+        except RuntimeError as e:
+            # If no more tries, then raise the initial error
+            if tries_left == 0:
+                raise e
+                
+            # If the request failed first time, refresh and retry
+            refreshPilotToken(
+                self.diracx_URL,
+                self.pilotUUID,
+                self.jwtData
+            )
+
+            return self.executeRequest(
+                raw_data=raw_data,
+                insecure=insecure,
+                content_type=content_type,
+                tries_left=tries_left - 1
+            )
 
 class X509BasedRequest(BaseRequest):
     """Connected Request with X509 support"""
@@ -227,14 +252,13 @@ class X509BasedRequest(BaseRequest):
         )
 
 
-def refreshPilotToken(url, pilotUUID, jwt, jwt_lock):
+def refreshPilotToken(url, pilotUUID, jwt):
     """
     Refresh the JWT token in a separate thread.
 
     :param str url: Server URL
     :param str pilotUUID: Pilot unique ID
     :param dict jwt: Shared dict with current JWT; updated in-place
-    :param threading.Lock jwt_lock: Lock to safely update the jwt dict
     :return: None
     """
 
@@ -247,7 +271,8 @@ def refreshPilotToken(url, pilotUUID, jwt, jwt_lock):
 
     # Create request object with required configuration
     config = TokenBasedRequest(
-        url="%s/api/pilots/refresh-token" % url,
+        diracx_URL=url,
+        endpoint_path="/api/pilots/refresh-token",
         caPath=caPath,
         pilotUUID=pilotUUID,
         jwtData=jwt
@@ -259,15 +284,13 @@ def refreshPilotToken(url, pilotUUID, jwt, jwt_lock):
             "refresh_token": jwt["refresh_token"]
         },
         insecure=True,
+        tries_left=0
     )
 
-    # Ensure thread-safe update of the shared jwt dictionary
-    jwt_lock.acquire()
-    try:
-        jwt.update(response)
-    finally:
-        jwt_lock.release()
-
+    # Do NOT assign directly, because jwt is a reference, not a copy
+    jwt["access_token"] = response["access_token"]
+    jwt["refresh_token"] = response["refresh_token"]
+    jwt["exp"] = response["exp"]
 
 def revokePilotToken(url, pilotUUID, jwt, clientID):
     """
@@ -306,27 +329,3 @@ def revokePilotToken(url, pilotUUID, jwt, clientID):
         insecure=True,
         content_type="query"
     )
-
-# === Token refresher thread function ===
-def refreshTokenLoop(url, pilotUUID, jwt, jwt_lock, logger, interval=600):
-    """
-    Periodically refresh the pilot JWT token.
-
-    :param str url: DiracX server URL
-    :param str pilotUUID: Pilot UUID
-    :param dict jwt: Shared JWT dictionary
-    :param threading.Lock jwt_lock: Lock to safely update JWT
-    :param Logger logger: Logger to debug 
-    :param int interval: Sleep time between refreshes in seconds
-    :return: None
-    """
-    while True:
-        time.sleep(interval)
-
-        try:
-            refreshPilotToken(url, pilotUUID, jwt, jwt_lock)
-
-            logger.info("Token refreshed.")
-        except Exception as e:
-            logger.error("Token refresh failed: %s\n" % str(e))
-            continue
