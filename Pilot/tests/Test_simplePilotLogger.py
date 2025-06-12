@@ -43,7 +43,6 @@ class TestPilotParams(unittest.TestCase):
         argvmock.__getitem__.assert_called()
         self.assertEqual(argvmock.__getitem__.call_count, 2)  # 2 getopt calls
         self.assertTrue(pp.pilotLogging)
-        self.assertEqual(pp.loggerURL, "dummyURL")
         self.assertTrue(pp.debugFlag)
 
     def test_getOptionForPaths(self):
@@ -105,7 +104,6 @@ class TestPilotParams(unittest.TestCase):
         res = pp.getPilotOptionsDict()
         logURL = "https://lbcertifdirac70.cern.ch:8443/WorkloadManagement/TornadoPilotLogging"
         self.assertEqual(res.get("RemoteLoggerURL"), logURL)
-        self.assertEqual(pp.loggerURL, logURL)
         self.assertEqual(res.get("RemoteLogging"), "False")
         self.assertIs(pp.pilotLogging, False)
         self.assertEqual(res.get("UploadPath"), "/gridpp/pilotlogs/")

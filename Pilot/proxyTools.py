@@ -4,6 +4,7 @@ from __future__ import absolute_import, division, print_function
 
 from curses import raw
 import json
+from multiprocessing import Value
 import os
 import time
 import re
@@ -23,8 +24,7 @@ try:
     from urllib.request import Request, urlopen
 except ImportError:
     from urllib import urlencode
-
-    from urllib2 import Request, urlopen, HTTPError
+    from urllib2 import HTTPError, Request, urlopen
 
 VOMS_FQANS_OID = b"1.3.6.1.4.1.8005.100.100.4"
 VOMS_EXTENSION_OID = b"1.3.6.1.4.1.8005.100.100.5"
@@ -113,15 +113,17 @@ class BaseRequest(object):
         """Add a header (key, value) into the request header"""
         self.headers[key] = value
 
-    def executeRequest(self, raw_data, insecure=False, content_type="json"):
+    def executeRequest(self, raw_data, insecure=False, content_type="json", json_output=True):
         """Execute a HTTP request with the data, headers, and the pre-defined data (SSL + auth)
 
         :param raw_data: Data to send
         :type raw_data: dict
         :param insecure: Deactivate proxy verification WARNING Debug ONLY
         :type insecure: bool
-        :param content_type: Data format to send, either "json" or "x-www-form-urlencoded"
+        :param content_type: Data format to send, either "json" or "x-www-form-urlencoded" or "query"
         :type content_type: str
+        :param json_output: If we have an output
+        :type json_output: bool
         :return: Parsed JSON response
         :rtype: dict
         """
@@ -158,25 +160,23 @@ class BaseRequest(object):
             ctx.verify_mode = ssl.CERT_NONE
 
 
-        try:
-            if sys.version_info.major == 3:
-                # Python 3 code
-                with urlopen(request, context=ctx) as res:
-                    response_data = res.read().decode("utf-8")  # Decode response bytes
-            else:
-                # Python 2 code
-                res = urlopen(request, context=ctx)
-                try:
-                    response_data = res.read()
-                finally:
-                    res.close()
-        except HTTPError as e:
-            raise RuntimeError("HTTPError : %s" % e.read().decode())
+        if sys.version_info.major == 3:
+            # Python 3 code
+            with urlopen(request, context=ctx) as res:
+                response_data = res.read().decode("utf-8")  # Decode response bytes
+        else:
+            # Python 2 code
+            res = urlopen(request, context=ctx)
+            try:
+                response_data = res.read()
+            finally:
+                res.close()
 
-        try:
-            return json.loads(response_data)  # Parse JSON response
-        except ValueError:  # In Python 2, json.JSONDecodeError is a subclass of ValueError
-            raise ValueError("Invalid JSON response: %s" % response_data)
+        if json_output:
+            try:
+                return json.loads(response_data)  # Parse JSON response
+            except ValueError:  # In Python 2, json.JSONDecodeError is a subclass of ValueError
+                raise ValueError("Invalid JSON response: %s" % response_data)
 
 
 class TokenBasedRequest(BaseRequest):
@@ -196,32 +196,37 @@ class TokenBasedRequest(BaseRequest):
         # Adds the JWT in the HTTP request (in the Bearer field)
         self.headers["Authorization"] = "Bearer %s" % self.jwtData["access_token"]
 
-    def executeRequest(self, raw_data, insecure=False, content_type="json", tries_left=1):
+    def executeRequest(self, raw_data, insecure=False, content_type="json", json_output=True, tries_left=1):
         
         try:
             return super(TokenBasedRequest, self).executeRequest(
                 raw_data,
                 insecure=insecure,
-                content_type=content_type
+                content_type=content_type,
+                json_output=json_output
             )
-        except RuntimeError as e:
-            # If no more tries, then raise the initial error
-            if tries_left == 0:
+        except HTTPError as e:
+            if tries_left == 0 or e.code != 401:
                 raise e
-                
-            # If the request failed first time, refresh and retry
+           
+                           
+            # If we have an unauthorized error, then refresh and retry
             refreshPilotToken(
                 self.diracx_URL,
                 self.pilotUUID,
                 self.jwtData
             )
+            
+            self.addJwtToHeader()
 
             return self.executeRequest(
                 raw_data=raw_data,
                 insecure=insecure,
                 content_type=content_type,
+                json_output=json_output,
                 tries_left=tries_left - 1
             )
+
 
 class X509BasedRequest(BaseRequest):
     """Connected Request with X509 support"""
@@ -241,14 +246,15 @@ class X509BasedRequest(BaseRequest):
             )
             self._hasExtraCredentials = True
 
-    def executeRequest(self, raw_data, insecure=False, content_type="json"):
+    def executeRequest(self, raw_data, insecure=False, content_type="json", json_output=True):
         # Adds a flag if the passed cert is a Directory
         if self._hasExtraCredentials:
             raw_data["extraCredentials"] = '"hosts"'
         return super(X509BasedRequest, self).executeRequest(
             raw_data,
             insecure=insecure,
-            content_type=content_type
+            content_type=content_type,
+            json_output=json_output
         )
 
 
@@ -270,27 +276,24 @@ def refreshPilotToken(url, pilotUUID, jwt):
     caPath = os.getenv("X509_CERT_DIR")
 
     # Create request object with required configuration
-    config = TokenBasedRequest(
-        diracx_URL=url,
-        endpoint_path="/api/pilots/refresh-token",
+    config = BaseRequest(
+        url=url + "/api/pilots/refresh-token",
         caPath=caPath,
         pilotUUID=pilotUUID,
-        jwtData=jwt
     )
 
     # Perform the request to refresh the token
     response = config.executeRequest(
         raw_data={
-            "refresh_token": jwt["refresh_token"]
+            "refresh_token": jwt["refresh_token"],
+            "pilot_stamp": pilotUUID
         },
         insecure=True,
-        tries_left=0
     )
 
     # Do NOT assign directly, because jwt is a reference, not a copy
     jwt["access_token"] = response["access_token"]
     jwt["refresh_token"] = response["refresh_token"]
-    jwt["exp"] = response["exp"]
 
 def revokePilotToken(url, pilotUUID, jwt, clientID):
     """
@@ -327,5 +330,6 @@ def revokePilotToken(url, pilotUUID, jwt, clientID):
     _response = config.executeRequest(
         raw_data=payload,
         insecure=True,
-        content_type="query"
+        content_type="query",
+        json_output=False
     )
