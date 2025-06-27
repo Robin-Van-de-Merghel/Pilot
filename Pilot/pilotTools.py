@@ -1070,7 +1070,7 @@ class PilotParams(object):
             self.log.info("Fetching JWT in DiracX (URL: %s)" % self.diracXServer)
 
             config = BaseRequest(
-                "%s/api/pilots/token" % (
+                "%s/api/pilots/secret-exchange" % (
                     self.diracXServer
                 ),
                 os.getenv("X509_CERT_DIR"),
