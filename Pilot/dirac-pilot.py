@@ -69,31 +69,25 @@ if __name__ == "__main__":
     # print the buffer, so we have a "classic' logger back in sync.
     sys.stdout.write(bufContent)
     # now the remote logger.
-    remote = pilotParams.pilotLogging and (pilotParams.diracXServer is not None)
-    if remote and pilotParams.jwt:
+    remote = pilotParams.pilotLogging and (pilotParams.loggerURL is not None)
+    if remote:
         # In a remote logger enabled Dirac version we would have some classic logger content from a wrapper,
         # which we passed in:
         receivedContent = ""
         if not sys.stdin.isatty():
             receivedContent = sys.stdin.read()
         log = RemoteLogger(
-            pilotParams.diracXServer,
+            pilotParams.loggerUR,
             "Pilot",
             bufsize=pilotParams.loggerBufsize,
             pilotUUID=pilotParams.pilotUUID,
             debugFlag=pilotParams.debugFlag,
-            jwt=pilotParams.jwt
+            wnVO=pilotParams.wnVO,
         )
         log.info("Remote logger activated")
-        log.buffer.write(log.format_to_json(
-            "INFO",
-            receivedContent,
-        ))
+        log.buffer.write(receivedContent)
         log.buffer.flush()
-        log.buffer.write(log.format_to_json(
-            "INFO",
-            bufContent,
-        ))
+        log.buffer.write(bufContent)
     else:
         log = Logger("Pilot", debugFlag=pilotParams.debugFlag)
 
@@ -101,7 +95,7 @@ if __name__ == "__main__":
         pythonPathCheck()
     else:
         log.info("Clearing PYTHONPATH for child processes.")
-        if "PYTHONPATH" in os.environ:
+    if "PYTHONPATH" in os.environ:
             os.environ["PYTHONPATH_SAVE"] = os.environ["PYTHONPATH"]
             os.environ["PYTHONPATH"] = ""
 
@@ -116,7 +110,7 @@ if __name__ == "__main__":
 
     log.info("Executing commands: %s" % str(pilotParams.commands))
 
-    if remote and pilotParams.jwt:
+    if remote:
         # It's safer to cancel the timer here. Each command has got its own logger object with a timer cancelled by the
         # finaliser. No need for a timer in the "else" code segment below.
         try:
@@ -134,7 +128,7 @@ if __name__ == "__main__":
             log.error("Command %s could not be instantiated" % commandName)
             # send the last message and abandon ship.
             if remote:
-                log.buffer.flush(force=True)
+                log.buffer.flush()
             sys.exit(-1)
 
     log.info("Pilot tasks finished.")

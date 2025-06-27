@@ -91,28 +91,17 @@ def logFinalizer(func):
             self.log.info(
                 "Flushing the remote logger buffer for pilot on sys.exit(): %s (exit code:%s)" % (pRef, str(exCode))
             )
-            if self.pp.jwt:
-                try:
-                    self.log.error(str(exCode))
-                    self.log.error(traceback.format_exc())
-                    self.log.buffer.flush(force=True)
-                except Exception as exc:
-                    self.log.error("Remote logger couldn't be finalised %s " % str(exc))
-                raise
-
-                # No force here because there's no remote logger if we're here
-                self.log.buffer.flush()
+            self.log.buffer.flush()  # flush the buffer unconditionally (on sys.exit()).
+            try:
+                sendMessage(self.log.url, self.log.pilotUUID, self.log.wnVO, "finaliseLogs", {"retCode": str(exCode)})
+            except Exception as exc:
+                self.log.error("Remote logger couldn't be finalised %s " % str(exc))
             raise
         except Exception as exc:
             # unexpected exit: document it and bail out.
             self.log.error(str(exc))
             self.log.error(traceback.format_exc())
 
-            if self.pp.jwt:
-                # Force flush if it's a remote logger
-                self.log.buffer.flush(force=True)
-            else:
-                self.log.buffer.flush()
             raise
         finally:
             self.log.buffer.cancelTimer()
