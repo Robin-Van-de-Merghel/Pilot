@@ -12,6 +12,7 @@ import ssl
 import sys
 from base64 import b16decode
 from subprocess import PIPE, Popen
+from random import randint
 
 try:
     IsADirectoryError  # pylint: disable=used-before-assignment
@@ -31,6 +32,8 @@ VOMS_EXTENSION_OID = b"1.3.6.1.4.1.8005.100.100.5"
 
 RE_OPENSSL_ANS1_FORMAT = re.compile(br"^\s*\d+:d=(\d+)\s+hl=")
 
+MAX_REQUEST_RETRIES = 10 # If a request failed (503 error), we retry
+MAX_TIME_BETWEEN_TRIES = 20 # 20 seconds max between each request
 
 def parseASN1(data):
     cmd = ["openssl", "asn1parse", "-inform", "der"]
@@ -114,6 +117,30 @@ class BaseRequest(object):
         self.headers[key] = value
 
     def executeRequest(self, raw_data, insecure=False, content_type="json", json_output=True):
+
+        tries_left = MAX_REQUEST_RETRIES
+
+        while (tries_left > 0):
+            try: 
+                return self.__execute_raw_request(
+                    raw_data=raw_data,
+                    insecure=insecure,
+                    content_type=content_type,
+                    json_output=json_output
+                )
+            except HTTPError as e:
+                if e.code >= 500 and e.code < 600: 
+                    # If we have an 5XX error (server overloaded), we retry
+                    # To avoid DOS-ing the server, we retry few seconds later
+                    time.sleep(randint(1, MAX_TIME_BETWEEN_TRIES))
+                else:
+                    raise e 
+            
+            tries_left -= 1
+
+        raise RuntimeError("Too much tries. Server down.")
+
+    def __execute_raw_request(self, raw_data, insecure=False, content_type="json", json_output=True):
         """Execute a HTTP request with the data, headers, and the pre-defined data (SSL + auth)
 
         :param raw_data: Data to send
@@ -197,36 +224,32 @@ class TokenBasedRequest(BaseRequest):
         self.headers["Authorization"] = "Bearer %s" % self.jwtData["access_token"]
 
     def executeRequest(self, raw_data, insecure=False, content_type="json", json_output=True, tries_left=1):
-        
-        try:
-            return super(TokenBasedRequest, self).executeRequest(
-                raw_data,
-                insecure=insecure,
-                content_type=content_type,
-                json_output=json_output
-            )
-        except HTTPError as e:
-            if tries_left == 0 or e.code != 401:
-                raise e
-           
-                           
-            # If we have an unauthorized error, then refresh and retry
-            refreshPilotToken(
-                self.diracx_URL,
-                self.pilotUUID,
-                self.jwtData
-            )
+       
+        while (tries_left > 0):
+
+            try:
+                return super(TokenBasedRequest, self).executeRequest(
+                    raw_data,
+                    insecure=insecure,
+                    content_type=content_type,
+                    json_output=json_output
+                )
+            except HTTPError as e:
+                if e.code != 401:
+                    raise e
             
-            self.addJwtToHeader()
+                # If we have an unauthorized error, then refresh and retry
+                refreshPilotToken(
+                    self.diracx_URL,
+                    self.pilotUUID,
+                    self.jwtData
+                )
+                
+                self.addJwtToHeader()
 
-            return self.executeRequest(
-                raw_data=raw_data,
-                insecure=insecure,
-                content_type=content_type,
-                json_output=json_output,
-                tries_left=tries_left - 1
-            )
+            tries_left -= 1
 
+        raise RuntimeError("Too much tries. Can't refresh my token.")
 
 class X509BasedRequest(BaseRequest):
     """Connected Request with X509 support"""
