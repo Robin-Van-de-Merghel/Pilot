@@ -298,7 +298,7 @@ def refreshPilotToken(url, pilotUUID, jwt):
 
     # Create request object with required configuration
     config = BaseRequest(
-        url=url + "/api/pilots/token",
+        url=url + "/api/auth/pilot-token",
         caPath=caPath,
         pilotUUID=pilotUUID,
     )
