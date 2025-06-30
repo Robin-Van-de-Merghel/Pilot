@@ -43,7 +43,6 @@ try:
     from shlex import quote
 except ImportError:
     from pipes import quote
-    
 try:
     from Pilot.pilotTools import (
         CommandBase,
@@ -101,7 +100,6 @@ def logFinalizer(func):
             # unexpected exit: document it and bail out.
             self.log.error(str(exc))
             self.log.error(traceback.format_exc())
-
             raise
         finally:
             self.log.buffer.cancelTimer()
@@ -132,7 +130,6 @@ class CheckWorkerNode(CommandBase):
     @logFinalizer
     def execute(self):
         """Get host and local user info, and other basic checks, e.g. space available"""
-        
         self.log.info("Uname      = %s" % " ".join(os.uname()))
         self.log.info("Host Name  = %s" % socket.gethostname())
         self.log.info("Host FQDN  = %s" % socket.getfqdn())
@@ -1230,5 +1227,3 @@ class NagiosProbes(CommandBase):
         """Standard entry point to a pilot command"""
         self._setNagiosOptions()
         self._runNagiosProbes()
-
-

@@ -77,7 +77,7 @@ if __name__ == "__main__":
         if not sys.stdin.isatty():
             receivedContent = sys.stdin.read()
         log = RemoteLogger(
-            pilotParams.loggerUR,
+            pilotParams.loggerURL,
             "Pilot",
             bufsize=pilotParams.loggerBufsize,
             pilotUUID=pilotParams.pilotUUID,
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         pythonPathCheck()
     else:
         log.info("Clearing PYTHONPATH for child processes.")
-    if "PYTHONPATH" in os.environ:
+        if "PYTHONPATH" in os.environ:
             os.environ["PYTHONPATH_SAVE"] = os.environ["PYTHONPATH"]
             os.environ["PYTHONPATH"] = ""
 
@@ -138,7 +138,7 @@ if __name__ == "__main__":
 
     if pilotParams.jwt:
         if remote:
-            log.buffer.flush(force=True)
+            log.buffer.flush()
 
         log.info("Revoking pilot token.")
         revokePilotToken(

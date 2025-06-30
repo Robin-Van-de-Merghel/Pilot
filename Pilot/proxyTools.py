@@ -2,9 +2,7 @@
 
 from __future__ import absolute_import, division, print_function
 
-from curses import raw
 import json
-from multiprocessing import Value
 import os
 import time
 import re
