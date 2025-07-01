@@ -69,9 +69,9 @@ except NameError:
     basestring = str
 
 try:
-    from Pilot.proxyTools import getVO, TokenBasedRequest, BaseRequest, refreshPilotToken
+    from Pilot.proxyTools import getVO, BaseRequest
 except ImportError:
-    from proxyTools import getVO, TokenBasedRequest, BaseRequest, refreshPilotToken
+    from proxyTools import getVO, BaseRequest
 
 try:
     FileNotFoundError  # pylint: disable=used-before-assignment
@@ -1061,7 +1061,7 @@ class PilotParams(object):
             self.log.info("Fetching JWT in DiracX (URL: %s)" % self.diracXServer)
 
             config = BaseRequest(
-                "%s/api/pilots/token" % (
+                "%s/api/auth/secret-exchange" % (
                     self.diracXServer
                 ),
                 os.getenv("X509_CERT_DIR"),
