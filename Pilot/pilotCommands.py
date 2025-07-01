@@ -546,7 +546,13 @@ class RegisterPilot(CommandBase):
 
     @logFinalizer
     def execute(self):
-        """Calls dirac-admin-add-pilot"""
+        """Calls dirac-admin-add-pilot
+        
+        Deprecated with DIRAC V9 and DiracX."""
+
+        if self.pp.jwt:
+            self.log.warn("Skipping module, normally it is already done via DiracX secret-exchange.")
+            return
 
         if not self.pp.pilotReference:
             self.log.warn("Skipping module, no pilot reference found")

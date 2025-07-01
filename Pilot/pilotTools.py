@@ -1072,12 +1072,27 @@ class PilotParams(object):
                 self.jwt = config.executeRequest({
                     "pilot_stamp": self.pilotUUID,
                     "pilot_secret": self.pilotSecret
-                }, insecure=True)
-            except (HTTPError, URLError) as e:
+                })
+            except HTTPError as e:
                 self.log.error("Request failed: %s" % str(e))
-                self.log.error("Could not fetch pilot tokens. Aborting...")
-                sys.exit(1)
-
+                self.log.error("Could not fetch pilot tokens.")
+                if e.code == 401:
+                    # First test if the error occurred because of "bad pilot_stamp"
+                    # If so, this pilot is in the vacuum case
+                    # So we redo auth, but this time with the right data for vacuum cases
+                    self.log.error("Retrying with vacuum case data...")
+                    self.jwt = config.executeRequest({
+                        "pilot_stamp": self.pilotUUID,
+                        "pilot_secret": self.pilotSecret,
+                        "vo": self.wnVO,
+                        "grid_type": self.gridCEType,
+                        "grid_site": self.site,
+                        "status": "Running"
+                    })
+                else:
+                    self.log.error("Can't be a vacuum case. Aborting...")
+                    sys.exit(-1)
+        
             self.log.info("Fetched the pilot token with the pilot secret.")
         else:
             self.log.info("PilotUUID, pilotSecret, and diracXServer are needed to support DiracX.")
