@@ -106,6 +106,12 @@ def logFinalizer(func):
             # unexpected exit: document it and bail out.
             self.log.error(str(exc))
             self.log.error(traceback.format_exc())
+
+            if self.pp.jwt:
+                # Force flush if it's a remote logger
+                self.log.buffer.flush(force=True)
+            else:
+                self.log.buffer.flush()
             raise
         finally:
             self.log.buffer.cancelTimer()
