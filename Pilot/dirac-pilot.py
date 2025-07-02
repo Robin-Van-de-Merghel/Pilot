@@ -69,8 +69,8 @@ if __name__ == "__main__":
     # print the buffer, so we have a "classic' logger back in sync.
     sys.stdout.write(bufContent)
     # now the remote logger.
-    remote = pilotParams.pilotLogging and (pilotParams.diracXServer is not None)
-    if remote and pilotParams.jwt:
+    remote = pilotParams.pilotLogging and pilotParams.diracXServer
+    if remote and pilotParams.jwt != {}:
         # In a remote logger enabled Dirac version we would have some classic logger content from a wrapper,
         # which we passed in:
         receivedContent = ""
@@ -84,6 +84,7 @@ if __name__ == "__main__":
             debugFlag=pilotParams.debugFlag,
             jwt=pilotParams.jwt
         )
+        log.info(str(pilotParams.jwt))
         log.info("Remote logger activated")
         log.buffer.write(log.format_to_json(
             "INFO",

@@ -720,7 +720,7 @@ def sendMessage(diracx_URL, pilotUUID, jwt={}, rawMessage = []):
 
     config = TokenBasedRequest(
         diracx_URL=diracx_URL,
-        endpoint_path="/api/pilots/message",
+        endpoint_path="/api/pilots/internal/message",
         caPath=caPath,
         jwtData=jwt,
         pilotUUID=pilotUUID
@@ -751,7 +751,7 @@ class CommandBase(object):
         self.debugFlag = pilotParams.debugFlag
         loggerURL = pilotParams.loggerURL
         # URL present and the flag is set:
-        isPilotLoggerOn = pilotParams.pilotLogging and (pilotParams.diracXServer is not None)
+        isPilotLoggerOn = pilotParams.pilotLogging and pilotParams.diracXServer
         interval = pilotParams.loggerTimerInterval
         bufsize = pilotParams.loggerBufsize
 
@@ -930,10 +930,7 @@ class PilotParams(object):
         self.gridCEType = ""
         self.pilotSecret = ""
         self.clientID = ""
-        self.jwt = {
-            "access_token": "",
-            "refresh_token": ""
-        }
+        self.jwt = {}
         # maxNumberOfProcessors: the number of
         # processors allocated to the pilot which the pilot can allocate to one payload
         # used to set payloadProcessors unless other limits are reached (like the number of processors on the WN)
